@@ -1,0 +1,160 @@
+class UserBasedCF:
+    def __init__(self, path):
+        self.train = {} #User-Item Rating Table （Training Set）
+        self.test = {} #User-item rating table （Test set）
+        self.generate_dataset(path)
+
+    def loadfile(self, path):
+        with open(path, 'r', encoding='utf-8') as fp:
+            for i, line in enumerate(fp):
+                yield line.strip('\r\n')
+
+    
+    def generate_dataset(self, path, pivot=0.7):
+        #Read the file, and generate the user-item score sheet and test set
+        i = 0
+        for line in self.loadfile(path):
+            user, movie, rating, _ = line.split('::')
+            if i <= 10:
+                print('{},{},{},{}'.format(user, movie, rating, _))
+            i += 1
+            if random.random() < pivot:
+                self.train.setdefault(user, {})
+                self.train[user][movie] = int(rating)
+            else:
+                self.test.setdefault(user, {})
+                self.test[user][movie] = int(rating)
+
+
+    def UserSimilarity(self):
+        #Building items-user's inverted list
+        self.item_users = dict()
+        for user,items in self.train.items():
+            for i in items.keys():
+                if i not in self.item_users:
+                    self.item_users[i] = set()
+                self.item_users[i].add(user)
+
+       #Calculate user-user co-occurrence matrix
+        C = dict()  #User-User Co-occurrence Matrix
+        N = dict()  #The number of items that the user generates behavior
+        for i,users in self.item_users.items():
+            for u in users:
+                N.setdefault(u,0)
+                N[u] += 1
+                C.setdefault(u,{})
+                for v in users:
+                    if u == v:
+                        continue
+                    C[u].setdefault(v,0)
+                    C[u][v] += 1
+
+        #Calculate user-user similarity, cosine similarity
+        self.W = dict()      #Similarity matrix
+        for u,related_users in C.items():
+            self.W.setdefault(u,{})
+            for v,cuv in related_users.items():
+                self.W[u][v] = cuv / math.sqrt(N[u] * N[v])
+        return self.W, C, N
+
+    #Recommend to user user, the top K related users
+    def Recommend(self,u,K=3,N=10):
+        rank = dict()
+        action_item = self.train[u].keys()     #User user has generated an item
+        # v: User v
+        # wuv: the similarity between user u and user v
+        for v,wuv in sorted(self.W[u].items(),key=lambda x:x[1],reverse=True)[0:K]:
+            #Traverse the top K users most relevant to user
+             # i: Item i for which user v has acted
+             # rvi: User v's score on item i
+            for i,rvi in self.train[v].items():
+                if i in action_item:
+                    continue
+                rank.setdefault(i,0)
+                # User’s interest in the item: the similarity between user u and user v* User v’s score on item i
+                rank[i] += wuv * rvi
+        return dict(sorted(rank.items(),key=lambda x:x[1],reverse=True)[0:N])   #Take the top N of the recommended results
+   
+
+    # Calculate the recall rate and accuracy rate
+    # Recall = number of recommended items / collection of all items
+    # Presicion = number of recommended pairs / total number of recommendations
+    def recallAndPrecision(self,k=8,nitem=10):
+        hit = 0
+        recall = 0
+        precision = 0
+        for user, items in self.test.items():
+            rank = self.Recommend(user, K=k, N=nitem)
+            hit += len(set(rank.keys()) & set(items.keys()))
+            recall += len(items)
+            precision += nitem
+        return (hit / (recall * 1.0),hit / (precision * 1.0))
+    
+    
+def print_2_dim_dic(dic, n=3):
+    n = 0
+    for u,v_cnt in dic.items():
+        if n >= 3:
+            break
+        n += 1    
+        m = 1
+        for v, cnt in v_cnt.items():
+            if m >= 3:
+                break
+            m += 1
+            print(u, v, cnt)
+
+def print_1_dim_dic(dic, n=3):
+    n = 0
+    for u,i_cnt in dic.items():
+        if n >= 3:
+            break
+        n += 1    
+        print(u, i_cnt)
+
+def sort_2_dim_dic(dic, k, n=5):
+    return sorted(dic[k].items(), key=lambda x:x[1],reverse=True)[:n]
+
+def sort_1_dim_dic(dic, n=5):
+    return sorted(dic.items(), key=lambda x:x[1],reverse=True)[:n]
+
+from pandas import DataFrame
+def trans_dic_2_dim(dic):
+     return DataFrame(dic).T.fillna(0)
+     
+     
+     
+     
+import os
+import random
+import math
+path = os.path.join('ml-1m', 'ratings.dat')
+ucf = UserBasedCF(path)
+
+
+
+W, C, N = ucf.UserSimilarity()
+
+
+
+# User co-occurrence matrix
+df_c = trans_dic_2_dim(C)
+
+
+df_c.shape
+
+
+
+df_c.iloc[:10,:10]
+
+
+sort_2_dim_dic(W, '520')
+
+
+recomend = ucf.Recommend('520')
+recomend
+
+
+ucf.recallAndPrecision()
+
+
